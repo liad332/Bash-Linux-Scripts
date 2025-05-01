@@ -1,0 +1,481 @@
+#!/bin/bash
+clear
+#HI.
+#student name: Liad Bahari. Student ID(code): S9.
+#class code: JMAGEN7736/30
+#lecture's name: Michael Elizarov.
+#Project: VULNER - ZX301
+
+#General: - !!! - (4.1 During each stage, display the stage in the terminal).
+
+USERINFO()
+{
+if [[ $(whoami) != 'root' ]]
+then
+	echo "You are not root, please sign in as root."
+	exit 1
+else
+	echo "You are root, we moving on."
+	echo
+fi
+}
+
+
+
+
+#1.1 Get from the user a network to scan.
+UserNet()
+{
+while true
+do
+read -p "[*] Please Enter a network you want to scan (like: 192.168.1.0/24 - with CIDR):" scan
+if [[ "$scan" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/(3[0-2]|[1-2]?[0-9])$ ]]
+then
+	echo "[*] Ip is OK. we are moving"
+	break
+else
+	clear
+	echo "[*] Ip is not valid, try again maybe CIDR is missing...."
+
+fi
+done
+
+}
+
+#1.2 Get from the user a name for the output directory.
+Dir_Name()
+{
+echo
+read -p "[*] please enter a name of the directory we gonna make:" Dir
+mkdir -p "$Dir"
+echo "[*] Directory $Dir created (:"
+}
+
+
+#1.3 Allow the user to choose Basic or Full.
+BF()
+{
+echo
+echo "[*] Stage - let the user to choose the scanning options:" 
+echo
+sleep 2
+while true
+do
+read -p "[*] please enter your choice 'B' (for Basic) or 'F' (for Full):" CICE
+
+#1.3.1 Basic: scans the network for TCP and UDP, including the service version and weak passwords.
+if [[ "$CICE" == 'B' || "$CICE" == 'b' ]]
+then
+	echo "[*] You chose Basic scan."
+	sleep 1
+	echo "[*] starting Basic scan on the network."
+	echo
+	mkdir "$Dir"/BasicResults/
+	sudo nmap -sn "$scan" -oG live_hosts.txt > /dev/null
+	grep "Up" live_hosts.txt | cut -d " " -f 2 > up_ips.txt
+	sleep 1
+	echo "[*] starting Nmap for TCP and UDP."
+	echo
+	sudo nmap -sS -sU -Pn -iL up_ips.txt -F -oN "$Dir/BasicResults"/TCP+UDP.txt > /dev/null
+        sleep 1 
+	echo 
+	echo "[*] nmap is done. and the results have been saved to $Dir/BasicResults/TCP+UDP.txt"
+	sleep 3
+	echo
+	read -p "[*] Done. Press enter to continue..."
+	clear
+	echo "[*] starting Nmap for service versions."
+	sleep 2
+	echo
+	sudo nmap -sV -T4 -iL up_ips.txt -oN "$Dir/BasicResults"/SVersions.txt > /dev/null 
+	echo
+	sleep 2
+        echo "[*] Nmap scan is done. The results of the service's versions have been saved to $Dir/BasicResults/SVersions.txt"
+	sleep 4
+	break
+
+#1.3.2 Full: include Nmap Scripting Engine (NSE), weak passwords, and vulnerability analysis.
+#(1.4 Make sure the input is valid).
+elif [[ "$CICE" == 'F' || "$CICE" == 'f' ]]
+then
+	mkdir "$Dir"/FullResults/
+	echo "[*] You chose Full scan."
+	sleep 1
+	sudo nmap -sn "$scan" -oG live_hosts.txt > /dev/null	
+	grep "Up" live_hosts.txt | cut -d " " -f 2 > up_ips.txt
+	sleep 1
+	echo "[*] starting Full scan on the network."
+	echo "."
+	echo "[*] It will take a while."
+	sudo nmap -sS -sV -T5 --script=default,vuln -iL up_ips.txt -oX "$Dir/FullResults/FullResults.xml"
+	sleep 1
+	echo
+	echo "[*] nmap is done. the results have been saved to $Dir/FullResults/FullResults.xml"
+	echo
+	sleep 4
+	break
+else
+	echo "[*] Your choice is INVALID, try again."
+fi
+done
+
+
+}
+
+
+####################################
+#2. Weak Credentials
+####################################
+#2.1 Look for weak passwords used in the network for login services.
+#2.1.1 Have a built-in password.lst to check for weak passwords.
+#2.1.2 Allow the user to supply their own password list.
+
+BuildIn()
+{
+#2.1.1 Have a built-in password.lst to check for weak passwords.
+
+cat <<EOF > password.lst
+welcome
+admin123
+123123
+123qwe
+login
+1234abcd
+abc123456
+adminadmin
+password123
+kali
+user
+msfadmin
+EOF
+
+cat <<EOF > usernames.txt
+admin
+administrator
+root
+user
+test
+guest
+info
+support
+sysadmin
+superuser
+manager
+operator
+developer
+dev
+ftp
+backup
+service
+john
+jane
+kali
+msfadmin
+EOF
+
+}
+
+
+
+
+weak()
+{
+while true
+do
+sleep 1
+clear
+echo "[*] Stage - asks the user for which protocol he wants to log into." 
+sleep 3
+echo
+echo "[*] Before everything, please choose a protocol to test:"
+echo "1) FTP"
+echo "2) SSH"
+echo "3) TELNET"
+echo "4) RDP"
+echo "5) Default - All services."
+read -p "Enter your choice (1-5): " choice
+
+if [[ "$choice" == "5" ]]
+then
+    proto_list=("ftp" "ssh" "telnet" "rdp")
+    port_list=(21 22 23 3389)
+    break
+fi
+
+
+
+case $choice in
+1) proto="ftp"; port=21 ;;
+2) proto="ssh"; port=22 ;;
+3) proto="telnet"; port=23 ;;
+4) proto="rdp"; port=3389 ;;
+*)
+   echo "[!] Invalid choice, try again.";
+   continue
+   ;;
+esac
+
+sleep 1
+proto_list=("$proto")
+port_list=("$port")
+break
+done
+
+sleep 1
+echo 
+echo "[*] Stage - asks if the user want their own passlist or not." 
+echo
+sleep 2
+
+#2.1.2 Allow the user to supply their own password list.
+
+while true
+do
+echo "[*] Do you have a pass list you want to use? (If yes - Enter Y, if not - Enter N: and we will use a default built-in pass list):"
+sleep 2
+read pass
+if [[ "$pass" == "Y" || "$pass" == "y" ]]
+then
+echo
+	echo "[*] Alright, we are going to use your pass list, please enter its path:" 
+    read path
+if [[ -f "$path" ]]
+then
+        echo
+        echo "[*] Using your pass list: $path"
+        echo
+        sleep 3
+        clear
+	passlist="$path"
+	break
+else
+    echo "[!] Error: File not found! Using default pass list instead."
+    BuildIn
+	sleep 2
+	clear
+	passlist="password.lst"
+	break
+fi
+elif [[ "$pass" == "N" || "$pass" == "n" ]]
+then
+    echo "[*] OK, we are going to use our default pass list..."
+    echo
+    sleep 2
+	clear
+    BuildIn
+    passlist="password.lst"
+	break
+else
+    echo "[*] The option is not valid, try again using Y/N."
+	read pass
+fi
+done
+
+sleep 1
+echo "[*] going to Hydra part - scanning for weak passwords:"
+echo
+sleep 2
+
+#credit to CHATGPT for this part.
+
+mkdir -p "$Dir/HydraResults"
+
+for ip in $(cat up_ips.txt)
+do
+for i in "${!proto_list[@]}"
+do
+proto="${proto_list[$i]}"
+port="${port_list[$i]}"
+outfile="$Dir/HydraResults/hydra_${ip}_${proto}.txt"
+
+nc -zv -w 3 $ip $port &>/dev/null
+if [ $? -eq 0 ] 
+then
+	echo "[*] Checking service $proto on port $port with the address:$ip."
+	echo
+	sleep 1
+	echo "[*] starting hydra with $proto on port $port" 
+	if [[ "$proto" == "telnet" || "$proto" == "rdp" ]]
+then
+	hydra -L usernames.txt -P "$passlist" -t 4 -F  -s "$port" "$ip" "$proto" -o "$outfile"
+else
+    	hydra -L usernames.txt -P "$passlist" "$ip" "$proto" -s "$port" -o "$outfile"
+fi
+	echo
+	sleep 1
+	echo "[*] scanning with hydra completed (:"
+	sleep 1
+	echo
+	echo "[*] and the Hydra results has been saved into > $outfile"
+	sleep 3
+else
+	echo "[*] $proto not open on $ip, skipping..."
+fi
+done
+done
+}
+
+#####################################
+##############    3    ##############
+#####################################
+#3.2 Display potential vulnerabilities via NSE and Searchsploit.
+
+MapVuln()
+{
+clear
+echo '[*] maping vulnerabilities part:'
+sleep 2
+echo
+
+#3.1 Mapping vulnerabilities should only take place if Full was chosen.
+#3.2 Display potential vulnerabilities via NSE and Searchsploit.
+
+if [[ "$CICE" == 'F' || "$CICE" == 'f' ]]
+then
+	echo "[*] preparing to show CVE's with vulnerabilities which found."
+	searchsploit --nmap "$Dir/FullResults/FullResults.xml" > "$Dir/FullResults/NSEvuln.txt" 
+	cat "$Dir/FullResults/NSEvuln.txt"
+	sleep 1
+	echo
+	echo "[*] Done, please press enter to continue:"
+	read
+	echo "[*] continuing..." 
+else
+	echo "[*] We move on."
+fi
+	
+}
+
+#############################
+########     4     ##########
+#############################
+#4.2 At the end, show the user the found information.
+
+Info()
+{
+clear
+echo "[*] Stage - Found information showing:"
+sleep 2
+clear
+
+while true
+do
+echo "[*] Now showing your Nmap choosing result:"
+
+echo
+if [[ "$CICE" == 'F' || "$CICE" == 'f' ]]
+then
+sleep 1
+echo
+cat "$Dir/FullResults/NSEvuln.txt"
+sleep 2
+echo "[*] Press enter - if u want to continue?"
+read
+echo "[*] OK."
+break
+
+elif [[ "$CICE" == 'B' || "$CICE" == 'b' ]]
+then
+sleep 1
+echo 
+cat "$Dir/BasicResults/SVersions.txt"
+sleep 3
+echo
+cat "$Dir/BasicResults/TCP+UDP.txt"
+sleep 2
+echo "[*] Press enter - if u want to continue?"
+read
+echo "[*] OK."
+sleep 2
+clear
+break
+
+fi
+
+done
+
+echo "[*] nmap results showing has Done!"
+sleep 1
+clear
+
+echo "[*] Now, we will show the Hydra results:"
+sleep 1
+cat "$Dir/HydraResults/"*.txt
+echo
+echo "[*] Press enter - if u want to continue?"
+read
+echo "[*] OK."
+sleep 2
+clear
+
+
+
+#4.3 Allow the user to search inside the results.
+#credit to CHATGPT
+
+echo "[*] Do you want to search for something inside the results? (y/n)"
+read search_choice
+
+if [[ "$search_choice" == "y" || "$search_choice" == "Y" ]]
+then
+	echo "[*] Enter the keyword you want to search:"
+    read keyword
+
+    echo "[*] Searching inside Nmap results..."
+    grep -i "$keyword" "$Dir/FullResults/NSEvuln.txt" "$Dir/BasicResults/SVersions.txt" "$Dir/BasicResults/TCP+UDP.txt"
+
+    echo
+    echo "[*] Searching inside Hydra results..."
+    grep -i "$keyword" "$Dir/HydraResults/"*.txt
+
+    echo
+    echo "[*] Search Done. Press Enter to continue."
+    read
+else
+    echo "[*] Skipping search."
+    sleep 1
+fi
+
+}
+
+
+#4.4 - Allow to save all results into a Zip file.
+ZIP()
+{
+echo "[*] stage - zipping results."
+sleep 1	
+read -p "[*] Do you want to make zip file from the results? (y/n)" zip
+if [[ "$zip" == 'y' || "$zip" == 'Y' ]]
+then
+	echo "[*] OK, we are doing it."
+	zip -r "$Dir/results.zip" "$Dir"
+	echo "[*] done. the zip is now at $Dir/results.zip (:"
+elif [[ "$zip" == 'n' || "$zip" == 'N' ]]
+then
+	echo "[*] Ok, not zipping..."
+	return 0
+else
+	echo "[*] Ok, your choice."
+	return 0
+fi
+}
+	
+	
+
+
+
+
+#functions
+echo "[**] script started" 
+echo
+USERINFO
+UserNet
+Dir_Name
+BF
+weak
+MapVuln
+Info
+ZIP
+echo
+sleep 1
+echo "[**] script completed"
