@@ -1,11 +1,7 @@
 #!/bin/bash
 clear
-#HI.
-#student name: Liad Bahari. Student ID(code): S9.
-#class code: JMAGEN7736/30
-#lecture's name: Michael Elizarov.
-#Project: VULNER - ZX301
 
+#HI.
 #General: - !!! - (4.1 During each stage, display the stage in the terminal).
 
 USERINFO()
